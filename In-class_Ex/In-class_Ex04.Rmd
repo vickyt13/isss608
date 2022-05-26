@@ -1,0 +1,67 @@
+---
+title: "In-class Exercise 4"
+description: |
+  A new article created using the Distill format.
+author:
+  - name: Sui Tianyue
+    url: 
+    affiliation: MITB, Singapore Management University
+    affiliation_url: https://scis.smu.edu.sg/
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, message =FALSE, warning = FALSE, fig.retina=3)
+```
+
+Distill is a publication format for scientific and technical writing, native to the web. 
+
+Learn more about using Distill for R Markdown at <https://rstudio.github.io/distill>.
+
+# Getting Started
+
+## Setting up R package
+
+To start with, ggstatsplot and tidyverse packages will be launched using library().
+
+```{r}
+packages = c('ggstatsplot','tidyverse')
+for(p in packages){
+  if(!require(p, character.only =T)){
+    install.packages(p)
+  }
+  library(p, character.only =T)
+}  
+```
+
+## Importing data
+
+```{r}
+exam <- read_csv("data/Exam_data.csv")
+```
+
+## ANOVA test
+```{r eval=FALSE}
+set.seed(12345)
+ggbetweenstats(
+  data = exam,
+  x = RACE, 
+  y = ENGLISH,
+  type = "np"
+)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+

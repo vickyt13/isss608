@@ -1,0 +1,314 @@
+---
+title: "Take-home Exercise 3"
+description: |
+  This is the third take-home exercise in a series of take-home exercises for the Visual Analytics module.In this exercise, I will take the challenge which is describe the health of various employers.And create graphs in a more readable way of city's employer, job and participant data.
+author:
+  - name: Tianyue Sui 
+    url: 
+    affiliation: MITB, Singapore Management University
+    affiliation_url: https://scis.smu.edu.sg/
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Overview
+
+The take-home exercise provides students the opportunity to revise and practice the R packages and programming skills we learnt in-class at home. This time,the exercise requires students to be innovative and creative by applying appropriate R packages to design enlightening and yet functional data visualization for analytics purposes. Students are encouraged to create multiple data visualization and compare our pros and cons before finalizing the best design.
+
+# 2. Getting Started
+
+Before we get started, it is important for us to ensure that the required R packages have been installed. If yes, we will load the R packages. If they have yet to be installed, we will install the R packages and load them onto R environment.
+
+The chunk code below will do the trick.
+
+```{r}
+packages = c('tidyverse','rvest','ggtern','ggrepel','ggpubr','stringr','lubridate','ggthemes','ggplot2','webr','ggdist','hrbrthemes','treemap','rPackedBar','plotly','ggiraph','zoo')
+for(p in packages){
+  if(!require(p, character.only =T)){
+    install.packages(p)
+  }
+  library(p, character.only =T)
+}  
+```
+
+# 3. Importing Data
+
+The code chunk below import *Participants.csv* from the data folder into R by using [`read_csv()`](https://readr.tidyverse.org/reference/read_delim.html) of [**readr**](https://readr.tidyverse.org/index.html) and save it as a tibble data frame called *participants*.
+
+```{r}
+p <- read_csv("data/Participants.csv")
+checkinJV <- read_csv("data/CheckinJournal.csv")
+jobs <- read_csv("data/Jobs.csv")
+ER <- read_csv("data/Employers.csv")
+building <- read_csv("data/Buildings.csv")
+Financial <- read_csv("data/FinancialJournal.csv")
+```
+
+# 4 Challenge
+
+### 4.1 Turnover recognition
+
+The main point of describing health of employer is turnover rate calculation. After google it, we get to know *Turnover rate* is defined as the percentage of employees who left a company over a certain period of time. It's often described in relation to employee retention rate.
++ The frequency of employee leaving a company: According to *CheckinJournal* we could get track of participants. Then we could recognize an employee has changed job by verify whether the workplace venue ID has been updated. 
++ Total number of employees: Meanwhile, we need to know how many staffs has one particular company ever employed.
++ Turnover rate: Total turnover times of particular period / Total employee number this company ever employed of this particular time
+
+### 4.2 Identify employer loaction and Formatting map
+
+As this is a virtual city, we can not import map package to identify employer location by longitude and altitude data. In order to notice particular area, we could leverage employer venue information to convert identify company location by converting points into x and y axes and formatting an employer map.
+
+# 5. Data Preparation
+
+### 5.1 Extract location point information
+
+The location points are recognized as string by R studio initially. We need to extract two dimensions' information by separating the whole long strings in to different columns x and y.
+
+```{r}
+ER<- ER %>% separate(location, c('POINT', 'x','y'),sep = " ")
+ER <- subset(ER, select = c('employerId','x','y','buildingId'))
+ER$x<- substr(ER$x, start = 2, stop = 20)
+ER$y<- substr(ER$y, 1,nchar(ER$y)-1)
+ER$x <- as.numeric(ER$x)
+ER$y <- as.numeric(ER$y)
+ER$employerId <- as.character(ER$employerId)
+```
+
+### 5.2 Manipulate Job table and extract employer need to work on weekends
+
+```{r}
+colnames(jobs)[which(names(jobs) == "employerId")] <- "CompanyID"
+jobs$CompanyID <- as.character(jobs$CompanyID)
+
+jobs$Sat<-0
+jobs$Sun<-0
+jobs$iden_we<-0
+jobs$weekend_status<- 0
+jobs$wd<-0
+
+jobs$Sat[which(str_detect(jobs$daysToWork,"Saturday"))]<-1
+jobs$Sun[which(str_detect(jobs$daysToWork,"Sunday"))]<-1
+jobs$we_num <-jobs$Sat + jobs$Sun
+
+jobs$wd<-lengths(c(strsplit(jobs$daysToWork,",")))
+jobs$iden_we<-"test"
+jobs$iden_we[which(jobs$we_num ==2)]<-"Work 2 Days"
+jobs$iden_we[which(jobs$we_num ==1)]<-"Work 1 Day"
+jobs$iden_we[which(jobs$we_num == 0)]<-"Not Work"
+
+jobs$weekend_status[which(jobs$we_num == 0)]<-"Not Work"
+jobs$weekend_status[which(jobs$we_num > 0)]<-"Work"
+
+
+
+ER_weekend <- filter(jobs,iden_we !='Not Work')
+```
+
+### 5.3 Merge tables and update appropriate attribute
+
+To combine tables using left_join and extract data for further analysis.
+
+```{r}
+workplace <- filter(checkinJV,venueType =='Workplace')
+workplace$venueId <- as.character(workplace$venueId)
+wp_ER <- left_join(workplace, ER, by = c("venueId" = "employerId"))%>%
+left_join(y=p, by = c("participantId" = "participantId"))
+colnames(wp_ER)[which(names(wp_ER) == "venueId")] <- "CompanyID"
+wp_ER$CompanyID <- as.character(wp_ER$CompanyID)
+wp_ER <- select(wp_ER, -c('joviality','interestGroup','householdSize'))
+```
+
+# 6 Final Visualization
+
+### 6.1 Overall working on weekend status
+
+```{r}
+work_weekend <- jobs %>% group_by(iden_we, weekend_status) %>% count(weekend_status)
+PieDonut(work_weekend, aes(weekend_status, iden_we, count=n),r0 = 0.6,explode = 1,
+         title = "Rate of working on weekend")
+```
+
+### 6.2 Turnover level distribution of the city
+
++  Extract company information with turnover data and turnover percent
+
+```{r}
+draft <- wp_ER %>% group_by(participantId, CompanyID)%>% count(CompanyID)
+draft$n <- 1
+cc <- draft %>% group_by(participantId) %>% summarise(TurnoverFreq = sum(n))
+cc_list <- filter(cc,TurnoverFreq > 1)
+
+check <- left_join(draft, cc_list, by = c("participantId" = "participantId"))
+check<- filter(check,TurnoverFreq >= 1)
+
+staff<- draft %>% group_by(CompanyID) %>% summarise(TurnoverFreq = sum(n))
+colnames(staff)[which(names(staff) == "TurnoverFreq")] <- "Staff_Num"
+company_churn<- check %>% group_by(CompanyID)%>% summarise(Frequent = sum(n))
+colnames(company_churn)[which(names(company_churn) == "Frequent")] <- "Turn_Freq"
+turn_bycc<- left_join(company_churn, staff, by = c("CompanyID" = "CompanyID"))
+turn_bycc$rate <-round((turn_bycc$Turn_Freq / turn_bycc$Staff_Num),2)
+turn_bycc$percent <-paste(round((turn_bycc$Turn_Freq / turn_bycc$Staff_Num)*100,2),"%",sep="")
+turn_bycc$Turn_Level <- cut(turn_bycc$rate, breaks = c(0,0.33,0.66,1), labels = c("Low Rate","Medium","High Rate"))
+
+aveTurnover<- sum(turn_bycc$Turn_Freq)/sum(turn_bycc$Staff_Num)
+```
+
++ Merge turnover information with employer details
+
+```{r}
+wp_ER <- left_join(wp_ER, turn_bycc, by = "CompanyID")
+ER <- left_join(x= ER,y=turn_bycc, by = c("employerId" = "CompanyID"))
+ER <- ER %>% mutate(Turn_Level = coalesce(Turn_Level, "NA"))
+```
+
++ Formatting the map by different turnover levels
+
+```{r}
+x1<-max(ER$x)
+x2<-min(ER$x)
+xmid<- (x1+x2)/2
+y1<-max(ER$y)
+y2<-min(ER$y)
+ymid<-(y1+y2)/2
+
+company<- 
+  ggplot(ER,aes(x=x, y=y, text = paste("Turnover",percent))) +
+  geom_point(aes(colour = Turn_Level,alpha = 0.9,size =1,
+                 text = paste(
+        "Company ID: ", employerId,
+        "\nTurnover Level: ",Turn_Level,
+        "\nPercent: ", percent))) +
+  geom_hline(yintercept= ymid,
+             linetype= "dashed",
+             color= "grey60",size= 1) +
+  geom_vline(xintercept= xmid,
+             linetype= "dashed",
+             color= "grey60",size= 1) +
+  theme_bw() +
+  labs(y = 'Point y',x= 'Point x',
+       title = 'Employer distribution by Turnover levels of the city')
+ggplotly(company,tooltip = "text")
+```
+
+### 6.3 Association between Turnover rates and Education levels
+
+```{r}
+wp_ER_detail<-filter(wp_ER,rate >0)
+
+ggplot(wp_ER_detail, aes(fill= educationLevel, y=rate, x=Turn_Level)) + 
+  geom_bar(position="fill", stat="identity") +
+  scale_fill_brewer(palette = "Paired", name = "Education") +
+  labs(y="Turnover Rate",x="Turnonver Level", title = "Turnover vs.Education Level") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_minimal() + theme(axis.title.y= element_text(angle=0))
+```
+
+### 6.4 Staff age distribution by Turnover Level
+
+The company which with high turnover rate, mainly hired more young people (age < 40). And the median of high turnover rate is less than 35.
+
+```{r}
+ggplot(data=wp_ER_detail,
+       aes(y = age, x= Turn_Level)) +
+  ggtitle("Employment of different turnover level by Age Attribute",
+          subtitle = "Companies with high turnover rates tend to hire younger employees") +
+  geom_violin(fill="skyblue",alpha=0.6) +
+  geom_boxplot(notch=TRUE, alpha=0.4) +
+  xlab("Education Level") +
+  ylab("Age") +
+  stat_summary(geom = "point",fun="mean",colour ="black",size=2.7) + 
+  theme(panel.background= element_blank(), axis.line= element_line(color= 'grey')) +
+  geom_hline(aes(yintercept=mean(age)),color="red",linetype="dashed",size = 1) +
+  geom_text(aes(x=3.4, label="Average", y=42), colour="red",text=element_text(size=2.5))
+```
+
+### 6.5 Status of Working on weekend by different turnover level
+
+```{r}
+colnames(jobs)[which(names(jobs) == "employerId")] <- "CompanyID"
+turn_weekend<- merge(x=jobs,y=wp_ER_detail, by = "CompanyID" )
+
+turn_weekend$Sat<-0
+turn_weekend$Sun<-0
+turn_weekend$iden_we<-0
+turn_weekend$weekend_status<- 0
+turn_weekend$wd<-0
+
+turn_weekend$Sat[which(str_detect(turn_weekend$daysToWork,"Saturday"))]<-1
+turn_weekend$Sun[which(str_detect(turn_weekend$daysToWork,"Sunday"))]<-1
+turn_weekend$we_num <-turn_weekend$Sat + turn_weekend$Sun
+
+turn_weekend$wd<-lengths(c(strsplit(turn_weekend$daysToWork,",")))
+turn_weekend$iden_we<-"test"
+turn_weekend$iden_we[which(turn_weekend$we_num ==2)]<-"Work 2 Days"
+turn_weekend$iden_we[which(turn_weekend$we_num ==1)]<-"Work 1 Day"
+turn_weekend$iden_we[which(turn_weekend$we_num == 0)]<-"Not Work"
+
+turn_weekend$weekend_status[which(turn_weekend$we_num == 0)]<-"Not Work"
+turn_weekend$weekend_status[which(turn_weekend$we_num > 0)]<-"Work"
+```
+
+```{r}
+turn_weekend %>%
+  group_by(Turn_Level, iden_we) %>%
+  summarise(n = n()) %>%
+  mutate(freq = round(n / sum(n),2)) %>%
+  ggplot(aes(fill=iden_we, x=Turn_Level, y=freq)) + 
+  geom_col() +
+  geom_text(aes(label = freq), size = 5, position = position_stack(vjust = 0.5)) +
+  labs(x="Turnover evel", y="No. of\n working on weekend",
+       title = "Working on weekend vs different turnover rate") + 
+   scale_fill_brewer(palette = "PuRd", name = "Working on weekend") +
+  theme_minimal()
+
+```
+
+### 6.6 Number of employees by different Turnover Level
+
+Most of company with higher turnover level, the number of employee is less than 5.
+
+```{r}
+ee_num <- jobs %>% group_by(CompanyID) %>% summarise(n = n())
+ee_num <-left_join(x=ee_num ,y = ER,by = c("CompanyID" = "employerId"))
+Trunover_employee <- filter(ee_num,Turn_Level !='NA')
+Trunover_employee$group <- "test"
+Trunover_employee$group[which(Trunover_employee$n <=5)]<-"Staff<=5"
+Trunover_employee$group[which(Trunover_employee$n >5)]<-"Staff>5"
+  
+Trunover_employee %>% 
+group_by(group, Turn_Level) %>%
+  summarise(n = n()) %>%
+  mutate(freq = round(n / sum(n),2)) %>%
+  ggplot(aes(fill=Turn_Level, x=group, y=freq)) + 
+  geom_col() +
+  geom_text(aes(label = freq), size = 5, position = position_stack(vjust = 0.5)) +
+  labs(x="Staff Number Group", y="No. of\n staff",
+       title = "Employment -  staff number") + 
+   scale_fill_brewer(palette = "Pastel1", name = "Turnover level") +
+  theme_minimal()
+```
+
+# 7 Conclusion 
+
++ Turnover rate particular high in Southwest of the city
+We could observe that most of companies are located in central and Southwest of the city. According to the map we may +notice that most of company with high level turnover rates (in color red) are located in Southwest.
+
++ High Turnover rate companies used to employ younger staffs
+From age distribution perspective, the company with low rate is more evenly distributed in different range, just a bit more employees around age 30. For company with medium rate, more staffs are around 50-55 and 30-35, kind of evenly distributed.But for company with high rate, most of people's ages are between 30-35, fewer people age between 35-45, but following more people over 45. Which exposes gaps of staff age structure. 
+
++ High Turnover rate companies get more staffs with Highschool degree
+According to education level percents among different turnover level, we notice that high turnover level companies employed more staffs with high school degree. 
+
++ The company with higher turnover level employed fewer employees
+25% companies with high turnover level employed fewer than 5 people, comparing with companies which employee number are greater than 5, only 6% companies belong to high turnover level.
+
++ Company with turnover activities make 20% of employee working on weekends
+overall, only 16% of jobs need to work on weekends, and when zoom into companies with turnover rates, we could find all levels make their 20% of staff working on weekends.
+
+In a conclusion, this city's average turnover rate is around 43%, near a half working people ever changed their job. The companies with high turnover rate tend to hire more young people and have smaller size of employee, as staffs change job more frequent, the employee structure seems not that healthy which exposed aging gap, and with more older employees. And these companies have demand for weekend work.
+
+
+

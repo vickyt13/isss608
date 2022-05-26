@@ -1,0 +1,252 @@
+---
+title: "Take-home Exercise 5"
+description: |
+  This is the 5th take-home exercise in a series of take-home exercises for the Visual Analytics module.In this exercise, we will take the challenge of reveling social areas of the city of Engagement, Ohio USA. Meanwhile visualise and analysi location with traffic bottleneck of the city.
+author:
+  - name: Tianyue Sui 
+    url: 
+    affiliation: MITB, Singapore Management University
+    affiliation_url: https://scis.smu.edu.sg/
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# 1. Overview
+
+The take-home exercise provides students the opportunity to revise and practice the R packages and programming skills we learnt in-class at home. This time,the exercise requires students to be innovative and creative by applying appropriate R packages to design enlightening and yet functional data visualization for analytics purposes. Students are encouraged to create multiple data visualization and compare our pros and cons before finalizing the best design.
+
+# 2. Getting Started
+
+Before we get started, it is important for us to ensure that the required R packages have been installed. If yes, we will load the R packages. If they have yet to be installed, we will install the R packages and load them onto R environment.
+
+The chunk code below will do the trick.
+
+```{r}
+packages = c('clock','lubridate', 'ggthemes', 'sftime',
+             'tidyverse', 'data.table', 'readr','sf','tmap','rmarkdown')
+
+for (p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p,character.only = T)
+}
+```
+
+# 3. Importing Data
+
+The code chunk below import *TravelJournal.csv* from the data folder into R by using [`read_csv()`](https://readr.tidyverse.org/reference/read_delim.html) of [**readr**](https://readr.tidyverse.org/index.html) and save it as a tibble data frame called *travel*.
+
+```{r echo=FALSE, eval=FALSE}
+travel<- read_csv("data/TravelJournal.csv")
+travel <- travel %>% mutate(travelEndLocationId = as.character(factor(travelEndLocationId))) %>%
+  select(-c(startingBalance,endingBalance,checkInTime,checkOutTime,travelStartLocationId,travelStartTime))
+
+write_rds(travel,"data/travel.rds")
+```
+
+```{r}
+#travel <- read_rds("data/travel.rds")
+pubs <- read_sf("data/Pubs.csv", options = "GEOM_POSSIBLE_NAMES=location")
+schools <- read_sf("data/Schools.csv", options = "GEOM_POSSIBLE_NAMES=location")
+apartment <- read_sf("data/Apartments.csv", options = "GEOM_POSSIBLE_NAMES=location")
+buildings <- read_sf("data/Buildings.csv", options = "GEOM_POSSIBLE_NAMES=location")
+employers <- read_sf("data/Employers.csv", options = "GEOM_POSSIBLE_NAMES=location")
+restaurant <- read_sf("data/Restaurants.csv", options = "GEOM_POSSIBLE_NAMES=location")
+```
+
+# 4.Data Visualizations and Insights
+
+### 4.1 Social Area Detection
+
+Generally the social area is physical or virtual space such as a social center, online social media, or other gathering place where people gather and interact. Thus, to identify physical social area in Ohio, we would get to know participants' transport purpose. Since there the *TravelJournal* already indicated one column, then we can leverage it to extract data for our specific target according.
+
+To visualize the area, we still need to know polygon information, as *TravelJournal* itself doesn't contain any polygon data, we need to join this journal with other table.
+
++ tmap_mode() is used to switch the display from static mode
+
++ tm_shape() is used to create a tmap-element that specifies a spatial data object
+
++ tm_polygon() is used to create a tmap-element that draws polygon feature.
+
+```{r eval=FALSE}
+travel_social <- left_join(travel, pubs, by = c("travelEndLocationId" = "pubId"))%>%
+  filter(purpose == "Recreation (Social Gathering)")
+```
+
+```{r eval=FALSE}
+write_csv(travel_social,"data/travel_social.csv")
+
+social <- read_sf("data/travel_social.csv",  
+                options = "GEOM_POSSIBLE_NAMES=location")
+```
+
+```{r eval=FALSE}
+social <- social %>%
+  mutate(travelStartTime = date_time_parse(travelStartTime,zone = "",
+                                     format = "%Y-%m-%dT%H:%M:%S"))%>%
+  mutate(travelEndTime = date_time_parse(travelEndTime,zone = "",
+                                     format = "%Y-%m-%dT%H:%M:%S"))%>%
+  mutate(checkInTime = date_time_parse(checkInTime,zone = "",
+                                     format = "%Y-%m-%dT%H:%M:%S"))%>%
+  mutate(checkOutTime = date_time_parse(checkOutTime,zone = "",
+                                     format = "%Y-%m-%dT%H:%M:%S"))%>%
+  mutate(startDay = as.numeric(factor(startDay)))%>%
+  mutate(endDay = as.numeric(factor(endDay))) 
+```
+
+```{r eval=FALSE}
+social_select <- social %>%
+  select(-c(startingBalance,endingBalance,hourlyCost,maxOccupancy))
+```
+
+```{r eval=FALSE}
+write_rds(social_select,"data/social_select.rds")
+```
+
+```{r}
+social_select<- read_rds("data/social_select.rds")
+```
+
+```{r}
+tm_shape(buildings)+
+tm_polygons(col = "grey60",
+size = 1.2,border.col = "black",border.lwd = 1) +
+tm_shape(social_select) +
+  tm_dots(col = "red", size = 0.7, alpha = 0.2)
+```
+
+### 4.2 Traffic bottleneck
+
+A traffic bottleneck is a localized disruption of vehicular traffic on a street, road, or highway. As opposed to a traffic jam, a bottleneck is a result of a specific physical condition. To define a reasonable metric of traffic bottleneck location, it seems reasonable to monitor number of commuter of a location per 10 minutes instead of total number of a whole day.
+
+Another thing is that the traffic bottleneck would be caused by high volume of vehicle, which usually appears during peak times.Under this condition, we chop 7am-9am as morning peak time and 5pm-7pm as evening peak time.
+In addition, as the data sets don't expose which type of vehicle does the commuter take, so assume part of them take public transport and others take private car. Then the destination with high volume would probably be traffic bottleneck.
+
+```{r}
+apartment_ed <- apartment %>%
+  mutate(venueId = apartmentId) %>%
+  select(venueId,location)
+
+employer_ed <- employers %>%
+  mutate(venueId = employerId) %>%
+  select(venueId,location)
+
+pubs_ed<- pubs %>%
+  mutate(venueId = pubId) %>%
+  select(venueId,location)
+
+school_ed<- schools %>%
+  mutate(venueId = schoolId) %>%
+  select(venueId,location)
+
+restaurant_ed<- restaurant %>%
+  mutate(venueId = restaurantId) %>%
+  select(venueId,location)
+
+combine <- rbind(apartment_ed,employer_ed,pubs_ed,school_ed,restaurant_ed)
+```
+
+```{r eval=FALSE}
+morning_peak<- left_join(combine, travel,by = c("venueId" = "travelEndLocationId")) %>%
+  mutate(endhour = hour(travelEndTime)) %>%
+  filter(endhour %in% c(7,8,9))%>%
+  mutate(participantId = as.character(factor(participantId)))
+```
+
+```{r eval=FALSE,echo=FALSE}
+write_rds(morning_peak,"data/morning_peak.rds")
+```
+
+```{r}
+hex <- st_make_grid(buildings,cellsize=100,square=FALSE) %>%
+  st_sf() %>%
+  rowid_to_column('hex_id')
+```
+
+```{r}
+morning_peak <- read_rds("data/morning_peak.rds")
+```
+
+```{r}
+count_points_in_hex <- st_join(morning_peak, 
+                        hex, 
+                        join=st_within) %>%
+  st_set_geometry(NULL) %>%
+  count(name='pointCount', hex_id) %>%
+  mutate(count_per_10min = round(pointCount/(60*2)*10,2))
+```
+
+```{r}
+hex_count <- hex %>%
+  left_join(count_points_in_hex, by = 'hex_id') %>%
+  replace(is.na(.), 0)
+```
+
+### Morning peak traffic bottleneck location
+
+High volume of vehicle appears in regional central area.
+
+```{r eval=FALSE}
+tmap_mode("plot")
+tm_shape(hex_count %>%
+           filter(count_per_10min > 0))+
+  tm_fill("count_per_10min",
+          n = 5,
+          style = "quantile",
+          title = "Commuter/10min",palette="-RdBu") +
+  tm_borders(alpha = 0.3)+
+  tm_layout(title = "Morning peak bottleneck",title.size = 1, title.position = c("right","top"))
+tmap_mode("plot")
+```
+
+### Evening peak traffic bottleneck location
+
+Comparing with morning peak, on contrast, high volume of vehicle appears in surrounding area of regional central.
+
+```{r echo=FALSE, eval=FALSE}
+evening_peak<- left_join(combine, travel,by = c("venueId" = "travelEndLocationId")) %>%
+  mutate(endhour = hour(travelEndTime)) %>%
+  filter(endhour %in% c(17,18,19))%>%
+  mutate(participantId = as.character(factor(participantId)))
+```
+
+```{r eval=FALSE,echo=FALSE}
+write_rds(evening_peak,"data/evening_peak.rds")
+```
+
+```{r}
+evening_peak <- read_rds("data/evening_peak.rds")
+```
+
+```{r echo=FALSE}
+count_evening_in_hex <- st_join(evening_peak, 
+                        hex, 
+                        join=st_within) %>%
+  st_set_geometry(NULL) %>%
+  count(name='pointCount', hex_id) %>%
+  mutate(count_per_10min = round(pointCount/(60*2)*10,2))
+```
+
+```{r echo=FALSE}
+hex_count_evening <- hex %>%
+  left_join(count_evening_in_hex, by = 'hex_id') %>%
+  replace(is.na(.), 0)
+```
+
+```{r echo=FALSE,eval=FALSE}
+tm_shape(hex_count_evening %>%
+           filter(count_per_10min > 0))+
+  tm_fill("count_per_10min",
+          n = 5,
+          style = "quantile",
+          title = "Commuter/10min",palette="-PiYG") +
+  tm_borders(alpha = 0.3)+
+  tm_layout(title = "Evening peak bottleneck",title.size = 1, title.position = c("right","top"))
+```
+
+

@@ -1,0 +1,323 @@
+---
+title: "Take-home Exercise 2"
+description: |
+   This is the second take-home exercise in a series of take-home exercises for the Visual Analytics module.In this exercise, we will learn from peer and remake graphs in a more readable way of city's demographic data.
+author:
+  - name: Tianyue Sui 
+    url: https://example.com/norajones
+    affiliation: MITB, Singapore Management University
+    affiliation_url: https://scis.smu.edu.sg/
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Overview
+
+The take-home exercise provides students the opportunity to revise and practice the R packages and programming skills we learnt in-class at home. This time,the exercise requires students to be innovative and creative by applying appropriate R packages to design enlightening and yet functional data visualization for analytics purposes. Students are encouraged to create multiple data visualization and compare our pros and cons before finalizing the best design.
+
+# 2. Getting Started
+
+Before we get started, it is important for us to ensure that the required R packages have been installed. If yes, we will load the R packages. If they have yet to be installed, we will install the R packages and load them onto R environment.
+
+The chunk code below will do the trick.
+
+```{r}
+packages = c('tidyverse','rvest','reshape2','ggtern','ggrepel','ggpubr','stringr','lubridate','ggthemes','ggplot2','webr','ggdist','hrbrthemes')
+for(p in packages){
+  if(!require(p, character.only =T)){
+    install.packages(p)
+  }
+  library(p, character.only =T)
+}  
+```
+
+# 3. Importing Data
+
+The code chunk below import *Participants.csv* from the data folder into R by using [`read_csv()`](https://readr.tidyverse.org/reference/read_delim.html) of [**readr**](https://readr.tidyverse.org/index.html) and save it as a tibble data frame called *participants*.
+
+```{r}
+participants <- read_csv("data/Participants.csv")
+glimpse(participants)
+```
+
+# 4. Makover Design
+
+### 4.1 Original version
+
+The original version shows percentage of household size by bar chart.To zoom in, the main idea of this graph is to show up the different percentages of having kids and not having kids among the participants. And the fractions of not having kids is around 30%.\
+
++ **Missing ratio**\
+However, the percentage information was not displayed in group just describing in title.\
+
++ **Unclear summarization**\
+In addition, actually the size of  households having kids is all 3, meanwhile the sizes of households without kids are 1 and 2 respectively.
+
+```{r echo=FALSE}
+ggplot(data = participants,
+       aes(x = haveKids)) +
+  geom_bar() +
+  geom_text(aes(label=..count..),
+            stat="count",
+            vjust=1.5,
+            color="white") +
+  xlab("Residents Have Kids") +
+  ylab("No. of\nResidents") +
+  ggtitle("Only 30% of Engagement Residents Have Kids",
+          subtitle = "A survey of 1011 Residents Taken in 2022") +
+  theme_ipsum(plot_title_size = 14,
+              axis_title_face = 24,
+              base_size=10,
+              grid="Y")
+```
+
+### 4.2 Formatting the Chart to improve visualisation
+To solve the problem of original design, using *webr* package to build a combination of pie chart and donut plot.\
+
++ **Improve readability**\
+As the whole percentage of different household size is 1, the pie chart is more readable to tell the distribution of household sizes of participants.\
++ **Highlight appropriately**\
+Exposure having kids status information using *explode* to highlight this portion from entirety.\
++ **Add clearer information**\
+At the same time, display household information to make it clearer that all having kids household size is 3.
+
+Convert householdSive from numerical to character for further visualization, and make is more readable.
+
+```{r}
+participants$householdSize[which(participants$householdSize == 1)]<- "Size 1"
+participants$householdSize[which(participants$householdSize == 2)]<- "Size 2"
+participants$householdSize[which(participants$householdSize == 3)]<- "Size 3"
+participants$participantId <- as.numeric(participants$participantId)
+hh_kid <- participants %>% group_by(householdSize, haveKids) %>% count(haveKids)
+print(hh_kid)
+```
+
+PieDonut chart using *webr* package
+
+```{r}
+
+PieDonut(hh_kid, aes(haveKids, householdSize, count=n),r0 = 0.7, r1=1.5, r2 = 1.9,explode = 2,
+         titlesize = 4,
+         title = "No. of People Who Have/Not Have Kids
+         in Different Household Size")
+```
+
+### 4.3 Original Household Distribution
+
+The main idea of original bar chart is to show basic information of household size by count and highlight the proportion of size 2 is the largest one. The observed fuzziness are as below:\
+
++ **Sights distribution**\
+The grey background may distribute sights to other places not focusing on the chart directly
++ **Not clear highlight**\
+As the discrepancy of these three types of household's proportion  is not that obvious, all around 30%,
+it is better to sort out number by descending order to highlight size 2.
+
+```{r echo=FALSE}
+ggplot(data =participants,
+       aes(x = householdSize)) +
+  geom_bar() +
+  geom_text(aes(label=..count..),
+            stat="count",
+            vjust=1.5,
+            color="white") +
+  xlab("Household Size (Persons)") +
+  ylab("No. of\nResidents") +
+  ggtitle("Most of Households Consist of 2 Person",
+          subtitle = "A survey of 1011 Residents Taken in 2022") +
+  theme_ipsum(plot_title_size = 14,
+              axis_title_face = 24,
+              base_size=10,
+              grid="Y")
+```
+
+### 4.4 Formatting the Chart to improve visualisation
+
++ **Using clearer format**\
+Removing redundant background and fill in comfortable color for graph.Middle align x label and y label to make them easier to read\
++ **Information integration**\
+Extend *y_lim* to expose the whole participant amount\
+Embed percentage details for different household size\
++ **Stand out by sorting **\
+Descending displaying by count to make size 2,the most frequent item standing out.
+
+Descending bar chart using *webr* package and geom_bar as below:
+
+```{r}
+ggplot(data = participants,
+       aes(x=reorder(householdSize, householdSize, function(x)-length(x))))  +
+  geom_bar(fill = "steelblue4") +
+  ylim(0,400)+
+  geom_text(stat="count", 
+      aes(label=paste0(..count.., "  (", 
+      round(..count../sum(..count..)*100,
+            1), "%)")),
+      vjust=-1) +
+  xlab("Household Size") +
+  ylab("No. of\nParticipants") +
+  ggtitle("Household size distribution")+
+  theme(panel.background= element_blank(), axis.line= element_line(color= 'grey'),
+        axis.title.y= element_text(angle=0))
+```
+
+### 4.5 Original Joviality distribution by different age range
+
+The original design is trying to show up and compare joviality distributions by different age ranges.\
+
++ **Lack of confidential proof**\
+Although the histogram displays joviality distribution is not same in age ranges, there isn't sufficient evidence to prove that elder people is much unhappy comparing with young people.\
++ **Not easy comparison in histogram**\
+Plus, the histogram distribution in separate canvases is not that easy for eyes doing comparison.
+
+```{r echo=FALSE}
+participants$Age_range <- cut(participants$age, breaks = c(0,30,40,50,61),labels = c("<=30","30-40","40-50",">=50"))
+
+ggplot(data = participants,
+       aes(x = joviality*100))+
+  geom_histogram(bins=20) +
+  facet_grid(~ Age_range) +
+  xlab("Happiness Level Percentage") +
+  ylab("No. of\nResidents") +
+  scale_x_continuous(breaks = c(0,50,100)) +
+  ggtitle("Elderlies are Getting Unhappy",
+          subtitle="Happiness Level Across Different Age Groups") +
+  theme_ipsum(plot_title_size = 14,
+              axis_title_face = 24,
+              strip_text_size = 10,
+              base_size=10,
+              plot_margin = margin(5,5,5,5))
+```
+
+### 4.6 Formatting the Chart to improve visualisation
+
++ **Show up statistical evidence**\
+Display mean point and a red dashed line to display overall average joviality score for easier measurement and comparison between age ranges.
+
++ **Remain distribution using better chart**\
+Combining boxplot and violin charts to remain original purpose. According to violin chart we still could identify same distribution characters as histogram chart shows. 
+
+Distribution by age range using geom_violin and geom_boxplot as below:
+
+```{r}
+ggplot(data=participants,
+       aes(y = joviality*100, x= Age_range)) +
+  ggtitle("Joviality Distribution by Age range ",subtitle = "Elder people is much unhappy") +
+  geom_violin(fill="skyblue",alpha=0.6) +
+  geom_boxplot(notch=TRUE, alpha=0.4) +
+  xlab("Age Range") +
+  ylab("Jovility Score") +
+  stat_summary(geom = "point",fun="mean",colour ="black",size=2.7) + 
+  theme(panel.background= element_blank(), axis.line= element_line(color= 'grey')) +
+  geom_hline(aes(yintercept=mean(joviality*100)),color="red",linetype="dashed",size = 1) +
+  geom_text(aes(x=4.3, label="Average", y=55), colour="red",text=element_text(size=5))
+```
+
+### 4.7 Original Joviality distribution by educaion level
+
++ **Lack of confidential proof**\
+Although the there is a vertical line in this whole raincloud graph, there isn't any sufficient evidence for reference and indicate that high-educated participants are more happier.\
+Plus, the distribution of raincloud is not easily to read, the supportive key point such as average score is missing.
+
++ **Redundant chart**\
+The dots below raincloud graph didn't provide useful information for further analysis. And it is kind of distraction for eyes and make confusion.
+
+```{r echo=FALSE}
+ggplot(data=participants, 
+       aes(x = educationLevel, y = joviality*100)) +
+  scale_y_continuous(breaks = seq(0, 100, 50), 
+                     limits = c(0, 100)) + 
+  stat_halfeye(adjust = .2, 
+               width = .8, 
+               color = NA,
+               justification = -.01,
+               position = position_nudge(
+                 x = .13)) + 
+  stat_dots(side = "left", 
+            justification = 1.1, 
+            binwidth = .25,
+            dotsize = 5) +
+  xlab("Education Level") +
+  ylab("Happiness Level\nPercentage") +
+  ggtitle("Low-educated Residents Tend to be Unhappy",
+          subtitle="Happiness Level Across Different Education Levels") +
+  theme_ipsum(plot_title_size = 14,
+              axis_title_face = 24,
+              strip_text_size = 10,
+              base_size=10) +
+  geom_hline(aes(yintercept=mean(joviality,
+                                 na.rm=T)*100),
+             color="red", 
+             linetype="dashed", 
+             size=0.5) +
+  geom_text(aes(5,mean(joviality)*100,
+                label="Average", vjust=-0.5), size=3)+
+  coord_flip()
+```
+
+### 4.8 Formatting the Chart to improve visualisation
+
++ **Show up statistical evidence**\
+Adding average position with dashed line to display overall average joviality score for easier understanding and comparison between education levels.\
+And the average amount is more meaningful than just picking up value 50.
+
++ **Remove meaningless chart**\
+Remove helpless dots part then add more meaningful boxplot to remain joviality distribution.
+
++ **Resort by descending order**
+Resort by logical order is more readable for eyes, and more clearly to clarify the insights.\
+In this condition, sort by education level descending order is much easier to get the conclusion, which is high-educated participant is happier.
+
+Joviality distribution by education using stat_halfeye and geom_boxplot as below:
+
+```{r}
+participants$educationLevel2 <- factor(participants$educationLevel,levels = c("Low", "HighSchoolOrCollege","Bachelors","Graduate" ))
+ggplot(participants, 
+       aes(x= educationLevel2, y= joviality*100)) +
+  stat_halfeye(adjust = .35,
+               width = .8,
+               color = 'dodgerblue3',
+               justification = -.15,
+               position = position_nudge(x = .12)) +
+  geom_boxplot(width = .12, outlier.color = NA ) +
+  geom_hline(aes(yintercept = mean(participants$joviality*100)),
+             linetype= 'dashed',color= 'red',size= 0.8) +
+  geom_text(aes(x=4.9, label="Average", y=50), 
+            colour="red",text=element_text(size=2)) +
+  coord_flip() +
+   labs(y = 'Joviality Score',x= 'Education Leve',
+       title = 'Joviality Distribution in by Education Level') +
+  theme(panel.background= element_blank(), axis.line= element_line(color= 'grey'),
+        axis.ticks.y = element_blank(),
+        panel.grid.major = element_line(size= 0.2, color = "grey"))
+```
+
+# 5. Learning Points
+
+This makeover take-home exercise provides an excellent opportunity to criticize submission in terms of  clarity and aesthetics meanwhile it's a good chance to learn from peer work. My key takeaways are:
+
++ **Choose proper chart can tell a better story**\
+Choose a proper visualization chart could make our insight clearer and understandability.Selecting a better chart requires us to be familiar with data characters and the insights we want to declare. Most of time, given choices using others charts and making comparison could help us to figure it out.
+
++ **Expose supportive information**\
+It is intuitive showing up reference value for displaying insights. And it's a kind of supporting for reviewer to better understanding conclusion. Plus, this information would provide clues for further analysis and judgement.
+
++ **Exclude meaningless chart**\
+Remove confused and redundant charts would make canvas clear and tidy so that our eyes would not distract by interference information. Also it would make reviewer easily get the points we try to expose.
+
++ **Use appropriate theme and color**
+The theme, color,label,ticks these supportive portions are important to our visualization.To decrease distraction and highlight insights, using proper theme, color, ticks, labels, titles could make the canvas more readable.
+
+# 6.Reference
+
+https://isss608-hhhandy.netlify.app/th_ex/th_ex1.html
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,179 @@
+---
+title: "Take-home Exercise 1"
+description: |
+  This is the first take-home exercise in a series of take-home exercises for the Visual Analytics module.In this exercise, we will reveal the demographic of the city of Engagement.
+author:
+  - name: Tianyue Sui 
+    url: https://example.com/norajones
+    affiliation: MITB, Singapore Management University
+    affiliation_url: https://scis.smu.edu.sg/
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1 Overview
+
+In this take-home exercise, appropriate static statistical graphics methods are used to reveal demographic of the city of Engagement, Ohio USA.
+
+# 2 Getting Started
+
+Before we get started, it is important for us to ensure that the required R packages have been installed. If yes, we will load the R packages. If they have yet to be installed, we will install the R packages and load them onto R environment.
+
+The chunk code below will do the trick.
+
+```{r}
+packages = c('tidyverse','rvest','reshape2','ggtern','viridis','ggrepel','ggpubr','ggmosaic','stringr','lubridate','ggthemes','ggplot2')
+for(p in packages){
+  if(!require(p, character.only =T)){
+    install.packages(p)
+  }
+  library(p, character.only =T)
+}  
+```
+
+# 3 Importing Data
+
+The code chunk below import *Participants.csv* and *Jobs.csv* from the data folder into R by using [`read_csv()`](https://readr.tidyverse.org/reference/read_delim.html) of [**readr**](https://readr.tidyverse.org/index.html) and save it as a tibble data frame called *participants*and *jobs*.
+
+```{r}
+participants <- read_csv("data/Participants.csv")
+jobs <- read_csv("data/Jobs.csv")
+```
+# 4 Data Preparation 
+### 4.1 Add readable score and indicators for Joy Degree and Age range
+
+```{r}
+participants$Score<-(participants$joviality * 100)
+participants$J_Degree <- cut(participants$Score, breaks = c(0,20,40,60,80,100), labels = c("Strongly Sad","Sad","Neutral","Happy","Strongly Happy"))
+participants$Age_range <- cut(participants$age, breaks = c(17,30,40,50,60),labels = c("18-30","30-40","40-50","50-60"))
+```
+
+### 4.2 Identify working days to regular work day and weekends
+
+```{r}
+jobs$Sat<-0
+jobs$Sun<-0
+jobs$iden_we<-0
+jobs$Sat[which(str_detect(jobs$daysToWork,"Saturday"))]<-1
+jobs$Sun[which(str_detect(jobs$daysToWork,"Sunday"))]<-1
+jobs$we_num <-jobs$Sat + jobs$Sun
+
+jobs$wd<-0
+jobs$wd<-lengths(c(strsplit(jobs$daysToWork,",")))
+jobs$iden_we<-"test"
+jobs$iden_we[which(jobs$we_num ==2)]<-"Work 2 Days"
+jobs$iden_we[which(jobs$we_num ==1)]<-"Work 1 Day"
+jobs$iden_we[which(jobs$we_num == 0)]<-"Not Work"
+```
+
+# 5 Final Visualization
+
+### 5.1 Overall distribution of Joviality 
+
+Below histogram and density chart showed tend is that more participants chose Joy score less than 25.
+
+```{r}
+ggplot(participants, aes(x = Score)) + 
+  geom_histogram(aes(y = ..density..),
+                 colour = 1, fill = "grey89") +
+  geom_density(lwd = 1, colour = 4,
+               fill = 4, alpha = 0.3) +
+  theme_hc() + labs(x="Joy Score", title = "Distribution of Joy score")
+```
+
+### 5.2 Joviality median exposed a great volatility among Interest Group having kids when compared with not having kids
+
+The median of Joy score of Interest Group not having kids is almost stablised at 50, while for having kids portion, we saw a great volatility.
+The code chunk below plot a boxplot char by using geom_boxplot()
+
+```{r}
+ggplot(data=participants,aes(y = Score, x = interestGroup)) +
+  geom_boxplot(fill = "steelblue1",alpha=0.5) + facet_grid(haveKids ~.) +
+  geom_hline(aes(yintercept=median(Score)),color="red",linetype="dashed",size = 1.2) +
+  theme_hc()+ labs(x="Interest Group", title = "Flactuation of Joy score vs. Having kids condition")
+```
+
+### 5.3 Participants who have kids are far fewer than Participants have kids in different education
+
+As both Educational level and Kid status are categorical data, we chose mosaic graph to display.
+The code chunk below plot a mosaic char by using geom_mosaic()
+
+```{r}
+ggplot(data = participants) +
+  geom_mosaic(aes(x = product(educationLevel), fill = haveKids)) +   
+  labs(y="Kids status indicator %", x="Education", title = "Have kid or not vs.Education Level") +
+  scale_y_continuous(labels = c(0,25,50,75,100)) +
+  scale_fill_brewer(palette = "Set1", name = "Kids Status") +
+  theme_hc()
+```
+
+### 5.4 Overall participant have kids is denser when Joviality score < 50, contrary to the score >50
+
+The code chunk below plot a density char by using geom_density()
+
+```{r}
+ggplot(data=participants,aes(x = Score,colour = haveKids)) +geom_density(lwd=0.8) +
+  labs(y="Density", x="Joviality Score", title = "Overall Joviality vs.Have Kids or Not") +
+  theme_classic2()
+```
+
+### 5.5 Having kids impact joviality among different education degree
+
+Below violin graph shows one evidences. It is having kids or not impacts joviality among different education level. To be specific, people with Graduate and low degree is happier when having kids. On contrary, people with Bachelor is happier without kids.
+
+```{r}
+ggplot(participants, aes(x = educationLevel, y = Score, fill = haveKids)) +
+  introdataviz::geom_split_violin(alpha = .4, trim = FALSE) +
+  geom_boxplot(width = .2, alpha = .6, fatten = NULL, show.legend = FALSE) +
+  stat_summary(fun.data = "mean_se", geom = "pointrange", show.legend = F, 
+               position = position_dodge(.175)) +
+  scale_x_discrete(name = "Education", labels = c("Bachelors", "Graduate","HighSchoolOrCollege","Low")) +
+  scale_fill_brewer(palette = "Dark2", name = "Kid Status") +
+  theme_minimal()+labs(title="Joy Score Distribution by Education vs. Kids Status")
+```
+
+### 5.6 Participants without kids are fewer in age range 30-50 comparing with the having kids ones
+
+Below violin chart showed the trend of participants in different ages. There is slightly different between age 30-50, which showed participant not having kids is fewer than participant having kids.
+
+```{r}
+ggplot(data=participants,aes(y = age, x= haveKids)) +geom_violin(fill= "wheat2") + 
+  geom_boxplot(alpha=0.5) +
+  stat_summary(geom ="point",fun.y="mean", color="red", size=3)+
+  labs(y="Age",x="Having kids status", title = "Age distribution for having kids or not")
+```
+
+### 5.7 Hourly rate by education
+
+In general, a higher hourly rate is conneted with a higher education level. Below code chunk shows boxplot char by using geom_boxplot(). To be specific, the hourly rate of participants who get Graduate level, is far more than other levels and vice versa.
+
+```{r}
+jobs$rate_edu <- factor(jobs$educationRequirement,levels = c("Graduate", "Bachelors","HighSchoolOrCollege","Low"))
+ggplot(data=jobs,aes(y = hourlyRate, x= rate_edu)) + geom_boxplot(fill = "royalblue2",alpha= 0.5)+
+labs(x="Education", y="Hourly rate", title = "Hourly rate vs.Education Level") +
+theme_minimal()
+```
+
+### 5.8 Working on weekends by education requirement
+
+Although the total number of work day and work hour for all participants is same (5 days/ week and 8 hours/ day), some of them are working at weekends.Below code chunk shows bar chart using geom_bar(). It displays that the lower education degree the participant gets, the more weekends they have to go to work.To zoom in, nearly 50% participants with low degree have to work on weekends, and 25% of them have to work during the whole weekends.
+
+```{r echo=FALSE}
+jobs$educationRequirement_weekend <- factor(jobs$educationRequirement,levels = c("Low", "HighSchoolOrCollege","Bachelors","Graduate" ))
+```
+
+```{r}
+ggplot(jobs, aes(fill= iden_we, y=wd, x=educationRequirement_weekend)) + 
+  geom_bar(position="fill", stat="identity") +
+  scale_fill_brewer(palette = "PuRd", name = "Weekend work") +
+  labs(y="Working days of weekends",x="Education", title = "Work on weekend vs.Education Level") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_minimal()
+```
+
+
+

@@ -1,0 +1,244 @@
+---
+title: "Take-home Exercise 4"
+description: |
+  This is the forth take-home exercise in a series of take-home exercises for the Visual Analytics module.In this exercise, I will take the challenge to analysis two participant different daily activities.And create graphs in a more readable way.
+author:
+  - name: Tianyue Sui
+    url: 
+    affiliation: MITB, Singapore Management University
+    affiliation_url: https://scis.smu.edu.sg/
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Overview
+
+The take-home exercise provides students the opportunity to revise and practice the R packages and programming skills we learnt in-class at home. This time,the exercise requires students to be innovative and creative by applying appropriate R packages to design enlightening and yet functional data visualization for analytics purposes. Students are encouraged to create multiple data visualization and compare our pros and cons before finalizing the best design.
+
+# 2. Getting Started
+
+Before we get started, it is important for us to ensure that the required R packages have been installed. If yes, we will load the R packages. If they have yet to be installed, we will install the R packages and load them onto R environment.
+
+The chunk code below will do the trick.
+
+```{r}
+packages = c('tidyverse','scales', 'viridis', 'stringr',
+             'lubridate', 'ggthemes', 'gridExtra', 
+             'readxl', 'knitr','data.table', 'ViSiElse')
+
+for(p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p, character.only = T)
+}
+```
+
+# 3. Challenge
+
+### 3.1 Import big data
+
+This topic requests us to import activity data which is composed of line items by each 5 minutes. So it is a big data, which could break down the whole system. It is a good practice for us to important a manageable data into R and gain some understanding of the data first. I chose to use a smaller data to perform the entire data preparation to ensure that the code chunks are correct and provide me the required tidy data set.
+Then I perform activity logs by batches. To easily import and read, I chose to extract logs in .csv file to local drive.
+Below importing multiple files, binding tables and write to csv file code as an example for reference.
+
++ **Import multiple files**
+
+```{r eval=FALSE}
+logs_fread <- list.files(path = "./data/Datasets/ActivityLogs/",
+                  pattern = "*.csv", 
+                  full.names = T) %>% 
+  map_df(~fread(.))
+```
+
++ **Bind dataset**
+
+```{r eval=FALSE}
+bind1_72 <- rbind(t1_40, t41_72)
+```
+
++ **Write to csv file**
+
+```{r eval=FALSE}
+write_csv(bind41_72,"E:\\isss608_temp\\tmp\\bind41_72.csv")
+```
+
+# 4. Importing Data
+
+The code chunk below import *log2p_22Mar.rds* from the data folder into R by using [`read_rds()`](https://readr.tidyverse.org/reference/read_delim.html) of [**readr**](https://readr.tidyverse.org/index.html) and save it as a tibble data frame called *log2p_22Mar*.
+
+```{r echo= FALSE, eval = FALSE}
+log2p<- read_rds("data/log2p.rds")
+log2p$date <- as.Date(log2p$timestamp)
+log2p$month <- month(log2p$timestamp)
+log2p$year <- year(log2p$timestamp)
+log2p$yearmonth <- paste(log2p$year,log2p$month,sep = "-")
+log2p_22Mar <- filter(log2p,yearmonth == "2022-3")
+write_rds(log2p_22Mar,"data/log2p_22Mar.rds")
+```
+
+```{r}
+log2p_22Mar<- read_rds("data/log2p_22Mar.rds")
+log2p_1Mar<- filter(log2p_22Mar,date == '2022-03-01')
+```
+
+# 5. Data Preparation
+
+The participants have different daily activity type, we need to classify activities as detailed as possible to detect which action belongs to long time, which action belongs to punctual. As the timestampe by activity category lists along with the column, we need to manipulate it displaying activity by minutes along with rows. Under this condition, I chose to use pivot function with filling value 0.
+
+```{r echo=FALSE}
+log2p_1Mar$hour <- hour(log2p_1Mar$timestamp)
+log2p_1Mar$min <- minute(log2p_1Mar$timestamp)
+log2p_1Mar$cmp_minute <- log2p_1Mar$hour*60 + log2p_1Mar$min
+log2p_1Mar$concat <- paste(log2p_1Mar$currentMode,log2p_1Mar$hungerStatus,log2p_1Mar$sleepStatus, sep = '_')
+```
+
+```{r}
+log2p_1Mar_selected <- log2p_1Mar %>%
+  select(participantId,date,currentMode,hungerStatus,sleepStatus,hour,min,cmp_minute,concat)
+
+activity <- log2p_1Mar_selected %>%
+pivot_wider(names_from = concat, values_from = cmp_minute, values_fill = 0)
+```
+
++ Prepare for participant No.17
+
+```{r}
+p17<- filter(activity,participantId == 17)
+
+start_sleep = min(p17$AtHome_JustAte_Sleeping)
+stop_sleep =  min(p17$AtHome_JustAte_Awake[p17$AtHome_JustAte_Awake!=min(p17$AtHome_JustAte_Awake)])-5
+wake = stop_sleep +5
+trans_towork = min(p17$Transport_JustAte_Awake[p17$Transport_JustAte_Awake!=min(p17$Transport_JustAte_Awake)])
+morning_start_work = min(p17$AtWork_BecameFull_Awake[p17$AtWork_BecameFull_Awake!=min(p17$AtWork_BecameFull_Awake)])
+morning_end_work = min(p17$Transport_Hungry_Awake[p17$Transport_Hungry_Awake!=min(p17$Transport_Hungry_Awake)])-5
+start_break = min(p17$Transport_Hungry_Awake[p17$Transport_Hungry_Awake!=min(p17$Transport_Hungry_Awake)])
+end_break = max(p17$AtRestaurant_Hungry_Awake)
+afternoon_star_work =  min(p17$AtWork_JustAte_Awake[p17$AtWork_JustAte_Awake!=min(p17$AtWork_JustAte_Awake)])
+afternoon_end_work = max(p17$AtWork_BecomingHungry_Awake)
+back_to_home = min(p17$Transport_BecomingHungry_Awake[p17$Transport_BecomingHungry_Awake!=min(p17$Transport_BecomingHungry_Awake)])
+start_evening = max(p17$AtHome_BecomingHungry_Awake)
+end_evening = max(p17$AtHome_Starving_Awake)
+go_to_sleep = max(p17$AtHome_Starving_Awake) +5
+sleep_end = max(p17$AtHome_Starving_Sleeping)
+id = 17
+
+p17_activity <- data.frame(id,start_sleep,stop_sleep,wake,trans_towork,morning_start_work,morning_end_work,
+                           start_break,end_break,afternoon_star_work,afternoon_end_work,back_to_home,
+                           start_evening,end_evening,go_to_sleep,sleep_end)
+
+```
+
+```{r}
+p17_v <- visielse(p17_activity, informer = NULL)
+b17 <- ConvertFromViSibook(p17_v@book)
+b17 <- b17[order(as.numeric(b17$showorder)), ] # order the data.frame 
+b17$label <- c("Sleep", "Stop sleeping", "Wake up", "Go to work", "Morning start work", 
+              "Morning end work", "Start eating lunch", "End of lunch", 
+              "Afternoon start work", "Afternoon end work", "Go to home", 
+              "Start leisure time", "End leisure time", "Go to sleep","End sleep")
+
+b17[16,] <- c("sleep", "Sleeping", "l", 1, "start_sleep", "stop_sleep")
+b17[17,] <- c("morning_work", "Morning Working", "l", 4, "morning_start_work", "morning_end_work")
+b17[18,] <- c("lunch", "Lunch break", "l", 5, "start_break", "end_break")
+b17[19,] <- c("afternoon_work", "Afternoon Working", "l", 6, "afternoon_star_work", "afternoon_end_work")
+b17[20,] <- c("leisure", "Leisure time", "l", 8, "start_evening", "end_evening")
+b17[21,] <- c("night_sleep", "Night sleep", "l", 10, "go_to_sleep", "sleep_end")
+b17$showorder <- c(NA, NA, 2, 3, NA, NA, NA, NA, NA, NA, 7, NA, NA, 9, NA, 1, 4, 5, 6, 8, 10) 
+b17 <- b17[order(as.numeric(b17$showorder)), ]
+```
+
++ Prepare for participant No.441
+
+```{r}
+p441<- filter(activity,participantId == 441)
+
+start_sleep441 = min(p441$AtHome_JustAte_Sleeping)
+stop_sleep441 =  min(p441$AtHome_JustAte_Awake[p441$AtHome_JustAte_Awake!=min(p441$AtHome_JustAte_Awake)])-5
+wake441 = stop_sleep441 +5
+leave_home441 = min(p441$Transport_JustAte_Awake[p441$Transport_JustAte_Awake!=min(p441$Transport_JustAte_Awake)])
+start_recreation = min(p441$AtRecreation_BecameFull_Awake[p441$AtRecreation_BecameFull_Awake!=min(p441$AtRecreation_BecameFull_Awake)])
+end_recreation = max(p441$AtRecreation_Hungry_Awake)
+back_tohome441 = min(p441$AtHome_Hungry_Awake[p441$AtHome_Hungry_Awake!=min(p441$AtHome_Hungry_Awake)])-20
+evening_athome441 = min(p441$AtHome_Hungry_Awake[p441$AtHome_Hungry_Awake!=min(p441$AtHome_Hungry_Awake)])
+evening_endhome441 = max(p441$AtHome_Starving_Awake)
+go_to_sleep441 = max(p441$AtHome_Starving_Awake) +5
+sleep_end441 = max(p441$AtHome_Starving_Sleeping)
+moving_bw_recreation1 = min(p441$Transport_BecameFull_Awake[p441$Transport_BecameFull_Awake!=min(p441$Transport_BecameFull_Awake)])
+moving_bw_recreation2 = 755
+moving_bw_recreation3 = 910
+start_rest441 = min(p441$AtRestaurant_Hungry_Awake[p441$AtRestaurant_Hungry_Awake!=min(p441$AtRestaurant_Hungry_Awake)])
+end_rest441 = max(p441$AtRestaurant_Hungry_Awake)
+moving_bw_recreation4 = 1035
+moving_bw_recreation5 = 1060
+moving_bw_recreation6 = 1180
+id = 441
+
+p441_activity <- data.frame(id,start_sleep441,stop_sleep441,wake441,leave_home441,start_recreation,end_recreation,
+                            back_tohome441,evening_athome441,evening_endhome441,go_to_sleep441,sleep_end441,
+                            moving_bw_recreation1,moving_bw_recreation2,moving_bw_recreation3,start_rest441,end_rest441,
+                            moving_bw_recreation4,moving_bw_recreation5,moving_bw_recreation6)
+```
+
+```{r}
+p441_v <- visielse(p441_activity, informer = NULL)
+b441 <- ConvertFromViSibook(p441_v@book)
+b441 <- b441[order(as.numeric(b441$showorder)), ]
+
+b441$label <- c("Sleep", "Stop sleeping", "Wake up", "Leave home", "Start recreation", 
+              "End recreation", "Back to home", "Evening start", 
+              "Evening end", "Go to sleep","End sleep","1st move recreation", "2nd move recreation", 
+              "3rd move recreation", "Start dinner","End dinner","4th move recreation",
+              "5th move recreation","6th move recreation")
+b441[20,] <- c("sleep", "Sleeping", "l", 1, "start_sleep441", "stop_sleep441")
+b441[21,] <- c("star recreation", "Hanging out", "l", 4, "start_recreation", "end_recreation")
+b441[22,] <- c("at home", "Evening at home", "l", 9, "evening_athome441", "evening_endhome441")
+b441[23,] <- c("evening sleep", "Night sleeping", "l", 10, "go_to_sleep441", "sleep_end441")
+b441[24,] <- c("dinner", "Dinner at Restaurant", "l", 11, "start_rest441", "end_rest441")
+
+b441$showorder <- c(NA, NA, 2, 3, NA, NA, 12, NA, NA,NA,NA, 5, 6, 7,NA,NA,8,9,10,1,4,13,14,11 ) 
+#b441 <- b441[order(as.numeric(b441$showorder)), ]
+```
+# 6. Final Visualisation
+
+```{r}
+v17 <- visielse(p17_activity, 
+               book = b17, 
+               informer = NULL, 
+               doplot = F, 
+               pixel = 30)
+plot(v17, 
+     vp0w = 0.7, 
+     unit.tps = "min", 
+     scal.unit.tps = 30, 
+     main = "Tipical day of Participanet No.17")
+```
+
+```{r}
+v441 <- visielse(p441_activity, 
+               book = b441, 
+               informer = NULL, 
+               doplot = F, 
+               pixel = 30)
+plot(v441, 
+     vp0w = 0.7, 
+     unit.tps = "min", 
+     scal.unit.tps = 30, 
+     main = "Tipical day of Participanet No.441")
+```
+# 7. Conclustion
+
+The reason why I chose these 2 participants is that, their available Financial Balance has big gap. Then I picked them out to observe whether their activities are different in a day.
+
++ Participant No.17 worked while No.441 not on Mar 1st 2022
+
+According to above graphs, the main difference between these 2 candidates is that No.17 went to work while No.441 didn't meanwhile No.441 spent most of his/her time on staying at recreation place, nearly from awake to before sleep.
+
++ Different ways treating spare time
+
+No.17 enjoyed having leisure/ spare time at home, while No.441 enjoyed to went to different recreation places. In addition, No.441 chose to have dinner at restaurant, while No.17 didn't have dinner out side of house.
+
