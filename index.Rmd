@@ -1,0 +1,15 @@
+---
+title: "Data Analytics Journey"
+description: |
+  This website decuments my learning journey of ISSS608 Visual Analytics and Applications. I hope you enjoy it!
+site: distill::distill_website
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+# Learn more about creating websites with Distill at:
+# https://rstudio.github.io/distill/website.html
+
+```
+

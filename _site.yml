@@ -1,0 +1,40 @@
+name: "ISSS608_VA"
+title: "Data Analytics Journey"
+description: |
+  Evil Prof Course
+output_dir: "_site"
+navbar:
+  right:
+    - text: "Home"
+      href: index.html
+    - text: "About"
+      href: about.html
+  left:
+    - text: "DataViz Makeover"
+      menu:
+      - text: "DataViz Makeover 1"
+        href: "DataViz1"
+      - text: "DataViz Makeover 2"
+        href: "DataViz2"
+    - text: "Take-home Exercise"
+      menu:
+      - text: "Take-home Exercise 1"
+        href: "take_home_exercise/ex_1.html"
+      - text: "Take-home Exercise 2"
+        href: "take_home_exercise/ex_2.html"
+      - text: "Take-home Exercise 3"
+        href: "take_home_exercise/ex_3.html"
+      - text: "Take-home Exercise 4"
+        href: "take_home_exercise/ex_4.html"
+      - text: "Take-home Exercise 5"
+        href: "take_home_exercise/ex_5.html"
+      - text: "Take-home Exercise 6"
+        href: "take_home_exercise/ex_6.html"
+    - text: "In-class Exercise"
+      menu:
+      - text: "In-class Exercise 4"
+        href: "In-class_Ex/In-class_Ex04.html"
+      - text: "In-class Exercise 6"
+        href: "In-class_Ex/In-class_Ex06.html"
+        
+output: distill::distill_article
