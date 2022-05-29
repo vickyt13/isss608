@@ -1,0 +1,135 @@
+---
+title: "Take-home Exercise 6"
+description: |
+  This is the 6th take-home exercise in a series of take-home exercises for the Visual Analytics module.In this exercise, we are required to reveal the patterns of community interactions of the city of Engagement, Ohio USA by using social network analysis approach.
+author:
+  - name: Tianyue Sui  
+    url: 
+    affiliation: MITB, Singapore Management University
+    affiliation_url: https://scis.smu.edu.sg/
+date: "`r Sys.Date()`"
+output: distill::distill_article
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# 1. Overview
+
+The take-home exercise provides students the opportunity to revise and practice the R packages and programming skills we learnt in-class at home. This time,the exercise requires students to be innovative and creative by applying appropriate R packages to design enlightening and yet functional data visualization for analytics purposes. Students are encouraged to create multiple data visualization and compare our pros and cons before finalizing the best design.
+
+# 2. Getting Started
+
+Before we get started, it is important for us to ensure that the required R packages have been installed. If yes, we will load the R packages. If they have yet to be installed, we will install the R packages and load them onto R environment.
+
+```{r}
+packages = c('igraph', 'tidygraph', 
+             'ggraph', 'visNetwork', 
+             'lubridate', 'clock',
+             'tidyverse', 'graphlayouts','stringr')
+for(p in packages){
+  if(!require(p, character.only = T)){
+    install.packages(p)
+  }
+  library(p, character.only = T)
+}
+```
+
+# 3. Importing Data
+
+The code chunk below import *SocialNetwork.csv* from the data folder into R by using [`read_csv()`](https://readr.tidyverse.org/reference/read_delim.html) of [**readr**](https://readr.tidyverse.org/index.html) and save it as a tibble data frame called *social_node*.
+
+```{r eval=FALSE}
+social <- read_csv("data/SocialNetwork.csv")
+```
+
+```{r}
+p <- read_csv("data/Participants.csv")
+```
+
+
+# 4. Data Preparation
+
+### Revise for social node
+
+```{r eval=FALSE}
+social_node <- social %>%
+  distinct(participantIdFrom) %>%
+  left_join(y = p, by = c("participantIdFrom" = "participantId")) %>%
+  mutate(participantIdFrom = as.character(factor(participantIdFrom))) %>%
+  mutate(householdSize = as.character(factor(householdSize))) %>% 
+  rename(Id = participantIdFrom)
+```
+
+```{r eval=FALSE}
+write_rds(social_node,"data/social_node.rds")
+```
+
+```{r}
+social_node <- read_rds("data/social_node.rds")
+```
+
+### Revise for social edge
+
+```{r eval=FALSE}
+social_edge <- social %>% 
+  select(timestamp = timestamp, source = participantIdFrom, target = participantIdTo) %>%
+  mutate(Weekday = wday(timestamp, label = TRUE,abbr = FALSE)) %>%
+  left_join(y = p, by = c("source" = "participantId"))%>%
+  mutate(Workday = case_when(grepl("Sunday|Saturday", Weekday) ~ "Weekend"))
+social_edge <- social_edge %>% mutate(Workday = coalesce(Workday, "Workday"))
+```
+
+## Social_edge by workday
+
+```{r eval=FALSE}
+social_edge_workday_aggregate <- social_edge %>%
+  filter(Workday == "Workday") %>%
+  group_by(source, target, Workday) %>%
+    summarise(Weight = n()) %>%
+  filter(source!=target) %>%
+  filter(Weight > 1) %>%
+  ungroup()
+```
+
+```{r eval=FALSE}
+write_rds(social_edge_workday_aggregate,"data/social_edge_workday_aggregate.rds")
+```
+
+```{r}
+social_edge_workday_aggregate <- read_rds("data/social_edge_workday_aggregate.rds")
+```
+
+```{r eval=FALSE}
+social_edge_weekend_aggregate <- social_edge %>%
+  filter(Workday == "Weekend") %>%
+  group_by(source, target, Workday) %>%
+    summarise(Weight = n()) %>%
+  filter(source!=target) %>%
+  filter(Weight > 1) %>%
+  ungroup()
+```
+
+```{r eval=FALSE}
+write_rds(social_edge_weekend_aggregate,"data/social_edge_weekend_aggregate.rds")
+```
+
+```{r}
+social_edge_weekend_aggregate <- read_rds("data/social_edge_weekend_aggregate.rds")
+```
+
+```{r}
+social_weekend_node <- social_edge_weekend_aggregate %>%
+  distinct(source) %>%
+  left_join(y = p, by = c("source" = "participantId")) %>%
+  rename(Id = source) %>%
+  mutate(Id = Id +1)
+```
+
+```{r}
+GAStech_graph <- tbl_graph(nodes = social_weekend_node,
+                           edges = social_edge_weekend_aggregate,
+                           directed = TRUE)
+GAStech_graph
+```

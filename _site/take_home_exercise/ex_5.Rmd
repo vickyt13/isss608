@@ -12,7 +12,7 @@ output: distill::distill_article
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(echo = TRUE)
 ```
 
 # 1. Overview
@@ -41,7 +41,10 @@ for (p in packages){
 
 The code chunk below import *TravelJournal.csv* from the data folder into R by using [`read_csv()`](https://readr.tidyverse.org/reference/read_delim.html) of [**readr**](https://readr.tidyverse.org/index.html) and save it as a tibble data frame called *travel*.
 
-```{r echo=FALSE, eval=FALSE}
+And use [`read_sf()`](https://www.rdocumentation.org/packages/sf/versions/0.1-1/topics/read.sf) of
+[**sf**](https://r-spatial.github.io/sf/), saving it as data frame called *pubs*, *schools*, *apartment*, *buildings*, *employers*, *restaurant*
+
+```{r eval=FALSE}
 travel<- read_csv("data/TravelJournal.csv")
 travel <- travel %>% mutate(travelEndLocationId = as.character(factor(travelEndLocationId))) %>%
   select(-c(startingBalance,endingBalance,checkInTime,checkOutTime,travelStartLocationId,travelStartTime))
@@ -49,8 +52,11 @@ travel <- travel %>% mutate(travelEndLocationId = as.character(factor(travelEndL
 write_rds(travel,"data/travel.rds")
 ```
 
-```{r}
+```{r eval=FALSE, echo=FALSE}
 #travel <- read_rds("data/travel.rds")
+```
+
+```{r}
 pubs <- read_sf("data/Pubs.csv", options = "GEOM_POSSIBLE_NAMES=location")
 schools <- read_sf("data/Schools.csv", options = "GEOM_POSSIBLE_NAMES=location")
 apartment <- read_sf("data/Apartments.csv", options = "GEOM_POSSIBLE_NAMES=location")
@@ -63,7 +69,7 @@ restaurant <- read_sf("data/Restaurants.csv", options = "GEOM_POSSIBLE_NAMES=loc
 
 ### 4.1 Social Area Detection
 
-Generally the social area is physical or virtual space such as a social center, online social media, or other gathering place where people gather and interact. Thus, to identify physical social area in Ohio, we would get to know participants' transport purpose. Since there the *TravelJournal* already indicated one column, then we can leverage it to extract data for our specific target according.
+Generally the social area is physical or virtual space such as a social center, online social media, or other gathering place where people gather and interact. Thus, to identify physical social area in Ohio, we would get to know participants' transport purpose. Since the *TravelJournal* already indicated one column with transport purpose, then we can leverage it to extract social purpose data for our specific target according.
 
 To visualize the area, we still need to know polygon information, as *TravelJournal* itself doesn't contain any polygon data, we need to join this journal with other table.
 
@@ -80,7 +86,6 @@ travel_social <- left_join(travel, pubs, by = c("travelEndLocationId" = "pubId")
 
 ```{r eval=FALSE}
 write_csv(travel_social,"data/travel_social.csv")
-
 social <- read_sf("data/travel_social.csv",  
                 options = "GEOM_POSSIBLE_NAMES=location")
 ```
@@ -127,6 +132,8 @@ A traffic bottleneck is a localized disruption of vehicular traffic on a street,
 Another thing is that the traffic bottleneck would be caused by high volume of vehicle, which usually appears during peak times.Under this condition, we chop 7am-9am as morning peak time and 5pm-7pm as evening peak time.
 In addition, as the data sets don't expose which type of vehicle does the commuter take, so assume part of them take public transport and others take private car. Then the destination with high volume would probably be traffic bottleneck.
 
+As travel data frame doesn't contain location information detail, we need to leverage and combine location from variable data frames.
+
 ```{r}
 apartment_ed <- apartment %>%
   mutate(venueId = apartmentId) %>%
@@ -151,6 +158,8 @@ restaurant_ed<- restaurant %>%
 combine <- rbind(apartment_ed,employer_ed,pubs_ed,school_ed,restaurant_ed)
 ```
 
+Segregate moring peak and evening peak by time.
+
 ```{r eval=FALSE}
 morning_peak<- left_join(combine, travel,by = c("venueId" = "travelEndLocationId")) %>%
   mutate(endhour = hour(travelEndTime)) %>%
@@ -158,18 +167,14 @@ morning_peak<- left_join(combine, travel,by = c("venueId" = "travelEndLocationId
   mutate(participantId = as.character(factor(participantId)))
 ```
 
-```{r eval=FALSE,echo=FALSE}
-write_rds(morning_peak,"data/morning_peak.rds")
+```{r}
+morning_peak <- read_rds("data/morning_peak.rds")
 ```
 
 ```{r}
 hex <- st_make_grid(buildings,cellsize=100,square=FALSE) %>%
   st_sf() %>%
   rowid_to_column('hex_id')
-```
-
-```{r}
-morning_peak <- read_rds("data/morning_peak.rds")
 ```
 
 ```{r}
@@ -189,9 +194,9 @@ hex_count <- hex %>%
 
 ### Morning peak traffic bottleneck location
 
-High volume of vehicle appears in regional central area.
+During morning peak (7am-9am) high volume of vehicle appears in regional central area.
 
-```{r eval=FALSE}
+```{r}
 tmap_mode("plot")
 tm_shape(hex_count %>%
            filter(count_per_10min > 0))+
@@ -206,7 +211,7 @@ tmap_mode("plot")
 
 ### Evening peak traffic bottleneck location
 
-Comparing with morning peak, on contrast, high volume of vehicle appears in surrounding area of regional central.
+Comparing with morning peak, on contrast, during evening peak (5pm-7pm) high volume of vehicle appears in surrounding area of regional central. And from quantile of commuter per 10 minutes angle, evening peak's highest value is greater than morning peak's while the last quantile range of evening peak is broader, from 75 to 1376. Which means morning peak is more crowded than evening peak.
 
 ```{r echo=FALSE, eval=FALSE}
 evening_peak<- left_join(combine, travel,by = c("venueId" = "travelEndLocationId")) %>%
@@ -223,7 +228,7 @@ write_rds(evening_peak,"data/evening_peak.rds")
 evening_peak <- read_rds("data/evening_peak.rds")
 ```
 
-```{r echo=FALSE}
+```{r}
 count_evening_in_hex <- st_join(evening_peak, 
                         hex, 
                         join=st_within) %>%
@@ -232,13 +237,13 @@ count_evening_in_hex <- st_join(evening_peak,
   mutate(count_per_10min = round(pointCount/(60*2)*10,2))
 ```
 
-```{r echo=FALSE}
+```{r}
 hex_count_evening <- hex %>%
   left_join(count_evening_in_hex, by = 'hex_id') %>%
   replace(is.na(.), 0)
 ```
 
-```{r echo=FALSE,eval=FALSE}
+```{r}
 tm_shape(hex_count_evening %>%
            filter(count_per_10min > 0))+
   tm_fill("count_per_10min",
@@ -248,5 +253,3 @@ tm_shape(hex_count_evening %>%
   tm_borders(alpha = 0.3)+
   tm_layout(title = "Evening peak bottleneck",title.size = 1, title.position = c("right","top"))
 ```
-
-
