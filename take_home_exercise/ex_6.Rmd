@@ -12,7 +12,7 @@ output: distill::distill_article
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(echo = TRUE,message = FALSE, warning = FALSE)
 ```
 
 # 1. Overview
@@ -26,7 +26,7 @@ Before we get started, it is important for us to ensure that the required R pack
 ```{r}
 packages = c('igraph', 'tidygraph', 
              'ggraph', 'visNetwork', 
-             'lubridate', 'clock',
+             'lubridate', 'clock','patchwork',
              'tidyverse', 'graphlayouts','stringr')
 for(p in packages){
   if(!require(p, character.only = T)){
@@ -51,85 +51,320 @@ p <- read_csv("data/Participants.csv")
 
 # 4. Data Preparation
 
-### Revise for social node
+### Data wrangling for social edge
+
+As original data set is too big to run successfully, I choose a whole month and participant 0 to 50 for further insights exploration.
 
 ```{r eval=FALSE}
-social_node <- social %>%
-  distinct(participantIdFrom) %>%
-  left_join(y = p, by = c("participantIdFrom" = "participantId")) %>%
-  mutate(participantIdFrom = as.character(factor(participantIdFrom))) %>%
-  mutate(householdSize = as.character(factor(householdSize))) %>% 
-  rename(Id = participantIdFrom)
-```
-
-```{r eval=FALSE}
-write_rds(social_node,"data/social_node.rds")
-```
-
-```{r}
-social_node <- read_rds("data/social_node.rds")
-```
-
-### Revise for social edge
-
-```{r eval=FALSE}
-social_edge <- social %>% 
+Mar_social_edge <- social %>%    # Extract 50 Participant
   select(timestamp = timestamp, source = participantIdFrom, target = participantIdTo) %>%
   mutate(Weekday = wday(timestamp, label = TRUE,abbr = FALSE)) %>%
-  left_join(y = p, by = c("source" = "participantId"))%>%
-  mutate(Workday = case_when(grepl("Sunday|Saturday", Weekday) ~ "Weekend"))
-social_edge <- social_edge %>% mutate(Workday = coalesce(Workday, "Workday"))
+  mutate(YearMon = format(as.Date(timestamp), "%Y-%m")) %>%
+  filter(YearMon == "2022-03")%>%
+  filter(source < 50)
 ```
 
-## Social_edge by workday
+```{r eval=FALSE}
+Mar50_social_edge<- Mar_social_edge %>%
+  filter(source<50) %>%
+  mutate(dayType = case_when(Weekday %in% c("Saturday","Sunday")~"Weekend")) %>%
+  mutate(dayType = coalesce(dayType, "Weekday"))
+```
 
 ```{r eval=FALSE}
-social_edge_workday_aggregate <- social_edge %>%
-  filter(Workday == "Workday") %>%
-  group_by(source, target, Workday) %>%
+write_rds(Mar50_social_edge,"data/Mar50_social_edge.rds")
+```
+
+```{r}
+Mar50_social_edge <- read_rds("data/Mar50_social_edge.rds")
+```
+
+### March 2022 Social_edge extraction
+
++ To calculate frequent of social connection of this month, we add an extra column Weight
+
+```{r}
+MAR50_social_calculation <- Mar50_social_edge %>%  
+  group_by(source, target) %>%
+    summarise(Weight = n())
+```    
+
++ To get a mind of general frequent of March social connection, detect statistical *median* amount. 
+
+```{r}
+median(MAR50_social_calculation$Weight)
+```
++ Chopping out less frequent social connection, which the number of connection is less than 12.
+
+```{r}
+MAR50_social_edge_aggregate <- Mar50_social_edge %>%  
+  group_by(source, target) %>%
     summarise(Weight = n()) %>%
   filter(source!=target) %>%
-  filter(Weight > 1) %>%
+  filter(Weight > 11) %>%
   ungroup()
 ```
 
-```{r eval=FALSE}
-write_rds(social_edge_workday_aggregate,"data/social_edge_workday_aggregate.rds")
-```
+### Nodes extraction for March 2022
 
 ```{r}
-social_edge_workday_aggregate <- read_rds("data/social_edge_workday_aggregate.rds")
-```
-
-```{r eval=FALSE}
-social_edge_weekend_aggregate <- social_edge %>%
-  filter(Workday == "Weekend") %>%
-  group_by(source, target, Workday) %>%
-    summarise(Weight = n()) %>%
-  filter(source!=target) %>%
-  filter(Weight > 1) %>%
-  ungroup()
-```
-
-```{r eval=FALSE}
-write_rds(social_edge_weekend_aggregate,"data/social_edge_weekend_aggregate.rds")
-```
-
-```{r}
-social_edge_weekend_aggregate <- read_rds("data/social_edge_weekend_aggregate.rds")
-```
-
-```{r}
-social_weekend_node <- social_edge_weekend_aggregate %>%
+social_MAR50_node <- MAR50_social_edge_aggregate %>%
+  pivot_longer(cols = 1:2,
+               names_to = "target",
+               values_to = "source")%>%
   distinct(source) %>%
   left_join(y = p, by = c("source" = "participantId")) %>%
   rename(Id = source) %>%
-  mutate(Id = Id +1)
+  mutate(householdSize = as.character(factor(householdSize)))%>%
+  mutate(P_ID = Id)
+```
+
+### Build a graph data 
+
+```{r}
+MAR_50_graph <- graph_from_data_frame(MAR50_social_edge_aggregate,
+                                 vertices = social_MAR50_node) %>%
+  as_tbl_graph()
+```
+
+### March Overall interaction by Participant ID
+
+```{r}
+ggraph(MAR_50_graph, layout = "fr") +
+  geom_edge_arc(strength = 0.2, width = 0.5, alpha = 0.15) + 
+  geom_node_point(aes(size = joviality, color = factor(interestGroup))) + 
+  geom_node_text(aes(label = P_ID, size = 0.3), repel = TRUE) +
+  theme_void() +
+  theme(legend.position = "none") +
+  ggtitle("March 2022 overall social connection",subtitle = "nodes sorting by joviality") +
+  theme(legend.position = 'bottom')
+```
+
+### Specific cluster selection
+
+As above social interaction plot shows, the node size is based joviality. The higher joviality it is, the bigger size the node is. A cluster at the bottom with central points are all with lower joviality score which attracting curiosity. So we will step in and to explore further insights.
+
+**Cluster member participant Id** as following : 980, 844, 1, 59, 38, 951, 633, 584, 49, 765, 931
+
++ Extract node for the cluster
+
+```{r}
+cluster_node <- social_MAR50_node %>%
+  filter(Id %in% c(980,844,1,59,38,951,633,584,49,765,931))
+```
+
++ Extract edges for the cluster
+
+```{r}
+cluster_edge_aggregate <- MAR50_social_edge_aggregate %>%
+  filter(source %in% c(1,49,38))
+```
+
++ Extract data frame for the cluster
+
+```{r}
+cluster_graph <- graph_from_data_frame(cluster_edge_aggregate,
+                                 vertices = cluster_node) %>%
+  as_tbl_graph()
+```
+
+### Overall social connection visualization for the cluster
+
+From an overall view, we could observe that this cluster connect with each other frequently. However, in a way, participant 38 and 59, participant 1 and 951 seems contact less relatively. And this cluster seems could be treated as 2 portions, one portion is left side, start from participant 38. The other portion is right side, start from participant 59.
+
+On the other hand, it seems the frequent connection not that strictly along with the age. As you may refer to following plot. On contrary, participant 38 and 59 have similar ages (34 and 35 respectively), they didn't contact with each other more frequent as assumption.
+
+```{r}
+g_ori<- ggraph(cluster_graph, layout = "stress") +
+  geom_edge_link(aes(width = Weight, alpha = 0.4)) + 
+  geom_node_point(aes(size = joviality*1.2, color = factor(interestGroup))) + 
+  geom_node_text(aes(label = P_ID, size = 0.7), repel = TRUE) +
+  theme_void() +
+  ggtitle("Overall social connection of cluster by ID",subtitle = "by Participant ID") +
+  theme(legend.position = 'bottom')
+
+
+g_age<- ggraph(cluster_graph, layout = "stress") +
+  geom_edge_link(aes(width = Weight, alpha = 0.4)) + 
+  geom_node_point(aes(size = joviality*1.2, color = factor(interestGroup))) + 
+  geom_node_text(aes(label = age, size = 0.7), repel = TRUE) +
+  theme_void() +
+  theme(legend.position = "none") +
+  ggtitle("Is frequent connection related to Age?", subtitle = "Display node by Age") +
+  theme(legend.position = 'bottom')
+
+(g_ori)/(g_age) 
+```
+### Social connection observation by weekday for the cluster
+
++ To observe where there's difference within weeks, we apply contact frequent aggregation by weekday.
+
+```{r}
+cluster_byDay_aggregate <- Mar50_social_edge %>%
+   filter(source %in% c(1,49,38)) %>%
+  filter (target %in% c(980,844,59,951,633,584,765,931)) %>%
+  group_by(source, target,Weekday) %>%
+    summarise(Weight = n()) %>%
+  filter(source!=target) %>%
+  ungroup()
 ```
 
 ```{r}
-GAStech_graph <- tbl_graph(nodes = social_weekend_node,
-                           edges = social_edge_weekend_aggregate,
-                           directed = TRUE)
-GAStech_graph
+cluster_byDay_graph <- graph_from_data_frame(cluster_byDay_aggregate,
+                                 vertices = cluster_node) %>%
+  as_tbl_graph()
 ```
+
+Accordingly to specific weekdays we may notice on both continuous 2 days, Saturday and Sunday participant 49 contact less with participant 584. Suppose they may usually work together,so get in touch more on workdays.
+
+```{r}
+set_graph_style()
+byDay <- ggraph(cluster_byDay_graph, 
+            layout = "fr") + 
+  geom_edge_link(aes(width=Weight), 
+                 alpha=0.2) +
+  scale_edge_width(range = c(0.1, 5)) +
+  geom_node_point(aes(size = joviality,color = factor(interestGroup))) +
+  geom_node_text(aes(label = P_ID, size = 0.2), repel = TRUE)+
+  ggtitle("Cluster social connection differs by day within weeks")
+
+byDay + facet_edges(~Weekday)+
+  th_foreground(foreground = "grey80",  
+                border = TRUE) +
+  theme(legend.position = 'bottom')
+```
+
+# Further Data Enhancement
+
+Then we need additional data to explore potential reason. The additional information is imported from the *ParticipantStatusLog* in order to  study the attributes associated with the participants and potential intersections of the period.
+
+```{r eval=FALSE}
+log <- read_csv("data/ParticipantStatusLogs1.csv") %>%
+  select(participantId, apartmentId, jobId) %>%
+  group_by(participantId, apartmentId, jobId)%>%
+  summarise(count = n())
+```
+
+```{r eval=FALSE}
+write_rds(log,"data/log_modified.rds")
+```
+
+```{r}
+log_modified <- read_rds("data/log_modified.rds")
+```
+
++ To identify the employer information, just remain necessary columns for further join to reduce loading time and engine burden.
+
+```{r}
+jobs <- read_csv("data/Jobs.csv") %>%
+  select(jobId, employerId)
+```
+
+```{r}
+modified_node <- social_MAR50_node %>%
+  left_join(y = log_modified, by = c("Id" = "participantId")) %>%
+  filter(P_ID %in% c(980,844,1,59,38,951,633,584,49,765,931)) %>%
+  left_join(y= jobs, by = "jobId") %>%
+  select(-count)
+```
+ 
+### Work relationship exploration
+
+Based on below colored social connection plot, we could notice that participant 38, 49, 584, 633 are employed by same company (all nodes are in green). In this condition, we may assume part of daily frequent interaction is caused by work related requirement.
+
+```{r}
+MAR_further_graph <- graph_from_data_frame(cluster_edge_aggregate,
+                                 vertices = modified_node) %>%
+  as_tbl_graph()
+```
+
+```{r}
+ggraph(MAR_further_graph, layout = "stress") +
+  geom_edge_link(aes(width = Weight, alpha = 0.4)) + 
+  geom_node_point(aes(size = 1, color = factor(employerId))) + 
+  geom_node_text(aes(label = P_ID), repel = TRUE) +
+  theme_void() +
+  ggtitle("Cluster connection by ID",subtitle = "Colored by Employer") +
+  theme(legend.position = 'bottom')
+```
+### Entertainment relationship exploration
+
+Based on above exploration, it seems only working interaction won't contribute the most frequent connection with each other. Besides working activity, it seems other daily action contribute to frequent social connection as well.
+Let's dive deeper into participant daily check-in log of participant 49. 
+
+```{r eval=FALSE}
+checkin <- read_csv("data/CheckinJournal.csv")
+```
+
+```{r eval=FALSE}
+checkin <- read_csv("data/CheckinJournal.csv") %>%
+  mutate(YearMon = format(as.Date(timestamp), "%Y-%m")) %>%
+  filter(venueType %in% c("Pub","Restaurant")) %>%
+  filter(YearMon == "2022-03")
+```
+
+```{r eval=FALSE}
+write_rds(checkin,"data/checkinMar.rds")
+```
+
+```{r}
+checkinMar <- read_rds("data/checkinMar.rds")
+```
+
+```{r}
+check_selected <- checkinMar %>%
+  filter(participantId %in% c(38,633,584,49,931,765)) %>%
+  mutate(venueId = as.character(factor(venueId))) %>%
+  mutate( participantId= as.character(factor(participantId)))
+```
+
+```{r}
+check_pub <- check_selected %>%
+  filter(venueType == "Pub")
+```
+
+```{r}
+check_rest <- check_selected %>%
+  filter(venueType == "Restaurant")
+```
+
+We select his/ her the most frequent showing up site from the log to cross check with other linked participants. The most popular entertainment space to 49 is Restaurant 1805 and Pub 1799. Then following bar charts mention that, the two people 931 and 765 who contact the most frequent with participant 49, appearing at 49 favorite Pub and Restaurant the most correspondingly as well.
+
+```{r}
+ggplot(data = check_pub,
+aes(x = venueId)) +
+geom_bar(fill = "steelblue4") +
+ylim(0,100) +
+geom_text(stat="count", 
+      aes(label=paste0(..count.. )),
+      vjust=-1) +
+  xlab("Pub Id") +
+  ylab("No.of Check in March ") +
+  ggtitle("Situation of the Cluster check-in Pub")+
+  theme(panel.background= element_blank(), axis.line= element_line(color= 'grey'),
+        axis.title.y= element_text(angle=0))+
+  facet_grid( participantId~.)
+```
+
+```{r}
+ggplot(data = check_rest,
+aes(x = venueId)) +
+geom_bar(fill = "steelblue4") +
+ylim(0,80) +
+geom_text(stat="count", 
+      aes(label=paste0(..count.. )),
+      vjust=-1) +
+  xlab("Restaurant Id") +
+  ylab("No.of Check in March ") +
+  ggtitle("Situation of the Cluster check-in Restaurant")+
+  theme(panel.background= element_blank(), axis.line= element_line(color= 'grey'),
+        axis.title.y= element_text(angle=0))+
+  facet_grid( participantId~.)
+```
+
+
+# Observation
+
++ Participants who work together may get a higher chance to connect more frequently.
+
++ Participants showing off in same entertainment location, will get a higher chance to social more frequent than others.
