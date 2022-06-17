@@ -137,7 +137,8 @@ ggraph(MAR_50_graph, layout = "fr") +
   theme_void() +
   theme(legend.position = "none") +
   ggtitle("March 2022 overall social connection",subtitle = "nodes sorting by joviality") +
-  theme(legend.position = 'bottom')
+  theme(legend.position = 'bottom')+
+  theme(plot.title = element_text(size = 17, face = "bold"))
 ```
 
 ### Specific cluster selection
@@ -181,7 +182,8 @@ g_ori<- ggraph(cluster_graph, layout = "stress") +
   geom_node_text(aes(label = P_ID, size = 0.7), repel = TRUE) +
   theme_void() +
   ggtitle("Overall social connection of cluster by ID",subtitle = "by Participant ID") +
-  theme(legend.position = 'bottom')
+  theme(legend.position = 'bottom')+
+  theme(plot.title = element_text(size = 17, face = "bold"))
 
 
 g_age<- ggraph(cluster_graph, layout = "stress") +
@@ -191,7 +193,8 @@ g_age<- ggraph(cluster_graph, layout = "stress") +
   theme_void() +
   theme(legend.position = "none") +
   ggtitle("Is frequent connection related to Age?", subtitle = "Display node by Age") +
-  theme(legend.position = 'bottom')
+  theme(legend.position = 'bottom')+
+  theme(plot.title = element_text(size = 17, face = "bold"))
 
 (g_ori)/(g_age) 
 ```
@@ -226,9 +229,11 @@ byDay <- ggraph(cluster_byDay_graph,
   scale_edge_width(range = c(0.1, 5)) +
   geom_node_point(aes(size = joviality,color = factor(interestGroup))) +
   geom_node_text(aes(label = P_ID, size = 0.2), repel = TRUE)+
-  ggtitle("Cluster social connection differs by day within weeks")
+  ggtitle("Cluster social connection differs by day within weeks") +
+  theme(plot.title = element_text(size = 15, face = "bold"))
 
-byDay + facet_edges(~Weekday)+
+
+byDay + facet_edges(~Weekday,scales="free")+
   th_foreground(foreground = "grey80",  
                 border = TRUE) +
   theme(legend.position = 'bottom')
@@ -337,13 +342,14 @@ geom_bar(fill = "steelblue4") +
 ylim(0,100) +
 geom_text(stat="count", 
       aes(label=paste0(..count.. )),
-      vjust=-1) +
+      vjust=-0.8) +
   xlab("Pub Id") +
   ylab("No.of Check in March ") +
-  ggtitle("Situation of the Cluster check-in Pub")+
+  ggtitle("Situation of the Cluster check-in Pub 1799")+
   theme(panel.background= element_blank(), axis.line= element_line(color= 'grey'),
         axis.title.y= element_text(angle=0))+
-  facet_grid( participantId~.)
+  facet_grid( participantId~.)+
+  theme(plot.title = element_text(size = 15, face = "bold"))
 ```
 
 ```{r}
@@ -353,13 +359,14 @@ geom_bar(fill = "steelblue4") +
 ylim(0,80) +
 geom_text(stat="count", 
       aes(label=paste0(..count.. )),
-      vjust=-1) +
+      vjust=-0.8) +
   xlab("Restaurant Id") +
   ylab("No.of Check in March ") +
-  ggtitle("Situation of the Cluster check-in Restaurant")+
+  facet_grid( participantId~.)+
+  ggtitle("Situation of the Cluster check-in Restaurant 1805")+
   theme(panel.background= element_blank(), axis.line= element_line(color= 'grey'),
         axis.title.y= element_text(angle=0))+
-  facet_grid( participantId~.)
+  theme(plot.title = element_text(size = 15, face = "bold"))
 ```
 
 
